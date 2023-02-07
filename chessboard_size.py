@@ -88,7 +88,8 @@ if __name__ == '__main__':
     img = cv2.imread('image/Chessboard0631.png', 0)
     # Xóa nhiễu sóng sin
     img = remove_sin_wave_noise(img)
-    # Xóa nhiễu hạt tiêu, làm mượt    img = remove_noise_and_smooth(img)
+    # Xóa nhiễu hạt tiêu, làm mượt    
+    img = remove_noise_and_smooth(img)
     # Line detect
     lines = line_detection(img)
 
@@ -134,13 +135,20 @@ if __name__ == '__main__':
     print(len(remove_duplicate(vertical)), end='\n')
     print(len(remove_duplicate(horizontal)))
 
-    verLine = remove_duplicate(horizontal)
+    verLine = remove_duplicate(vertical)
 
     for line in verLine:
         x1, y1 = line[2][0]
         x2, y2 = line[2][1]
         cv2.line(imm, (x1, y1), (x2, y2), (0, 255, 255), 2)
     
+
+    horLine = remove_duplicate(horizontal)
+
+    for line in horLine:
+        x1, y1 = line[2][0]
+        x2, y2 = line[2][1]
+        cv2.line(imm, (x1, y1), (x2, y2), (0, 255, 255), 2)
 
 
 
