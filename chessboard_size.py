@@ -41,13 +41,13 @@ def remove_noise_and_smooth(image):
 
     im = (cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))).apply(blur)  # Cân bằng histogram tăng độ tương phản
 
-    # cv2.imshow("thres", im)
+    ret, thresh = cv2.threshold(im, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)  # Threshold về binary image
+
+    # cv2.imshow("thres", thresh)
     #
     # cv2.waitKey(0)
 
-    ret, thresh = cv2.threshold(im, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)  # Threshold về binary image
-
-    print(thresh.shape)
+    # print(thresh.shape)
 
     kernel = np.ones((5, 5), np.uint8)
     #
@@ -70,33 +70,19 @@ def remove_noise_and_smooth(image):
     mean = np.mean(weight)
     std = np.std(weight)
 
-    print("%f %f" %(mean, std))
-    threshold = std/2
+    print("%f %f" % (mean, std))
+    threshold = std / 2
 
     res = np.zeros(labelsAry.shape, dtype=img_erosion.dtype)
-
-    weight_0 = []
 
     for i in range(1, nfeatures + 1):
         arr = labelsAry == i
         if abs(np.sum(arr) - mean) <= threshold:
-    #         weight_0.append(np.sum(arr))
-    #
-    # mean = np.mean(weight_0)
-    # std = np.std(weight_0)
-    # threshold = std
-    # for i in range(1, nfeatures + 1):
-    #     arr = labelsAry == i
-    #     if abs(np.sum(arr) - mean) <= threshold:
-            res += arr.astype(np.uint8)*255
+            res += arr.astype(np.uint8) * 255
 
-    # cv2.imshow("thress", img_erosion)
+    # cv2.imshow("thress", res)
     #
     # cv2.waitKey(0)
-
-    cv2.imshow("thress", res)
-
-    cv2.waitKey(0)
 
     return cv2.dilate(res, kernel, iterations=1)
 
@@ -105,11 +91,6 @@ def line_detection(image):
     # Edge detection
     edges = cv2.Canny(image, 50, 150, apertureSize=3)
 
-    # cv2.imshow("thress", edges)
-    #
-    # cv2.waitKey(0)
-    # Apply HoughLinesP method to
-    # to directly obtain line end points
     lines_list = []
 
     # Line Detection
@@ -162,11 +143,15 @@ def remove_outlier(array):
 
 if __name__ == '__main__':
     # Đọc hình ảnh ở dạng xám
-    img = cv2.imread('image/Chessboard_0481.png', 0)
+    img = cv2.imread('image/Chessboard_00601.png', 0)
     # Xóa nhiễu sóng sin
     img = remove_sin_wave_noise(img)
     # Xóa nhiễu hạt tiêu, làm mượt    
     img = remove_noise_and_smooth(img)
+
+    cv2.imshow("thress", img)
+
+    cv2.waitKey(0)
     # Line detect
     lines = line_detection(img)
 
@@ -186,6 +171,7 @@ if __name__ == '__main__':
         Ox = [1, 0]
         Oy = [0, 1]
         vector = [x2 - x1, y2 - y1]
+        # cv2.line(imm, (x1, y1), (x2, y2), (0, 255, 255), 2)
 
         unit_vector_1 = Ox / np.linalg.norm(Ox)
         unit_vector_2 = vector / np.linalg.norm(vector)
@@ -210,9 +196,9 @@ if __name__ == '__main__':
     horizontal = []
     print(array_object[0])
     for obj in array_object:
-        if obj[0] - min_angle < max_angle // 2:
+        if obj[0] - min_angle < (max_angle - min_angle) // 2:
             horizontal.append(obj)
-        elif obj[0] - min_angle > max_angle // 2:
+        elif obj[0] - min_angle >= (max_angle - min_angle) // 2:
             vertical.append(obj)
 
     # filter duplicate line
