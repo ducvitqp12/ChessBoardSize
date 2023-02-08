@@ -5,6 +5,19 @@ import math
 from scipy.ndimage.measurements import label
 
 
+def increase_brightness(img, value=30):
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    h, s, v = cv2.split(hsv)
+
+    lim = 255 - value
+    v[v > lim] = 255
+    v[v <= lim] += value
+
+    final_hsv = cv2.merge((h, s, v))
+    img = cv2.cvtColor(final_hsv, cv2.COLOR_HSV2BGR)
+    return img
+
+
 def remove_sin_wave_noise(image):
     img_float32 = np.float32(image)  # chuyển ảnh về float để biến đổi Fourier
 
@@ -84,7 +97,30 @@ def remove_noise_and_smooth(image):
     #
     # cv2.waitKey(0)
 
-    return cv2.dilate(res, kernel, iterations=1)
+    img_dilation = cv2.dilate(res, kernel, iterations=1)
+
+    img_dilation = cv2.dilate(img_dilation, kernel, iterations=1)
+
+    labelsAry2, nfeatures2 = label(img_dilation)
+
+    _weight = 0
+
+    # res2 = np.zeros(labelsAry.shape, dtype=img_erosion.dtype)
+
+    imax = 0
+
+    arr = []
+    for i in range(1, nfeatures2 + 1):
+        arr = labelsAry2 == i
+        if _weight < np.sum(arr):
+            _weight = np.sum(arr)
+            imax = i
+
+    res2 = labelsAry2 == imax
+
+    return thresh, res2.astype(np.uint8) * 255
+
+    # return thresh
 
 
 def line_detection(image):
@@ -143,16 +179,46 @@ def remove_outlier(array):
 
 if __name__ == '__main__':
     # Đọc hình ảnh ở dạng xám
-    img = cv2.imread('image/Chessboard_00601.png', 0)
+    img = cv2.imread('image/Chessboard_0511.png')
+
+    img = increase_brightness(img)
+    #
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    # cv2.imshow("thress", img)
+    #
+    # cv2.waitKey(0)
     # Xóa nhiễu sóng sin
     img = remove_sin_wave_noise(img)
     # Xóa nhiễu hạt tiêu, làm mượt    
-    img = remove_noise_and_smooth(img)
+    img, res = remove_noise_and_smooth(img)
+
+    contours, _ = cv2.findContours(res, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    # Find the contour with the maximum area
+    cnt = max(contours, key=cv2.contourArea)
+
+    # Find the convex hull of the contour
+    hull = cv2.convexHull(cnt)
+
+    print(hull)
 
     cv2.imshow("thress", img)
 
     cv2.waitKey(0)
+
+    approx = cv2.approxPolyDP(hull, epsilon=0.02 * cv2.arcLength(hull, True), closed=True)
+
+    cv2.fillConvexPoly(res, approx, 255)
+
+    img = np.bitwise_and(img, res)
     # Line detect
+    kernel = np.ones((5, 5), np.uint8)
+
+    cv2.imshow("thress", cv2.erode(img, kernel, iterations=1))
+
+    cv2.waitKey(0)
+
     lines = line_detection(img)
 
     array_object = []
