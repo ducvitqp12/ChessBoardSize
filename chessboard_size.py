@@ -137,51 +137,27 @@ def remove_noise_and_smooth(image):
 
     im = (cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))).apply(blur)  # Cân bằng histogram tăng độ tương phản
 
+    cv2.imshow("His", im)
+
+    cv2.waitKey(0)
+
     ret, thresh = cv2.threshold(im, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)  # Threshold về binary image
 
     cv2.imshow("thres", thresh)
 
     cv2.waitKey(0)
 
-    kernel = np.ones((3, 3), np.uint8)
     #
-    # img_erosion = cv2.erode(thresh, kernel, iterations=1)
-    #
-
-    img_dilation = cv2.dilate(thresh, kernel, iterations=1)
-
-    cv2.imshow("dilate1", img_dilation)
-
-    cv2.waitKey(0)
-
-    labelsAry2, nfeatures2 = label(img_dilation)
-
-    _weight = 0
-
-    imax = 0
-
-    for i in range(1, nfeatures2 + 1):
-        arr = labelsAry2 == i
-        if _weight < np.sum(arr):
-            _weight = np.sum(arr)
-            imax = i
-
-    res2 = labelsAry2 == imax
-
-    res2 = res2.astype(np.uint8) * 255
-
-    cv2.imshow("res", cv2.erode(res2, kernel, iterations=1))
-
-    cv2.waitKey(0)
-
-    return thresh, cv2.erode(res2, kernel, iterations=1)
-    #
-    # return thresh
+    return thresh
 
 
 def line_detection(image):
     # Edge detection
     edges = cv2.Canny(image, 50, 150, apertureSize=3)
+
+    cv2.imshow("edge", edges)
+
+    cv2.waitKey(0)
 
     lines_list = []
 
@@ -192,7 +168,7 @@ def line_detection(image):
         np.pi / 180,  # Angle resolution in radians
         threshold=100,  # Min number of votes for valid line
         minLineLength=5,  # Min allowed length of line
-        maxLineGap=100  # Max allowed gap between line for joining them
+        maxLineGap=50  # Max allowed gap between line for joining them
     )
     #
     # # Iterate over points
@@ -228,6 +204,9 @@ def remove_duplicate(array, img):
     for ele in array:
         check = True
         for res in result:
+            if abs(ele[0] - res[0]) < 5 and np.abs(ele[1] - res[1]) < 20:
+                check = False
+                break
             if np.abs(ele[1] - res[1]) < 4 and (ele[0] - 90) * (res[0] - 90) >= 0:
                 check = False
                 break
@@ -245,25 +224,36 @@ def remove_duplicate(array, img):
 
 
 def remove_outlier(array):
-    angle = []
+    angles = []
     for ele in array:
-        angle.append(ele[0])
-    mean = np.mean(angle)
-    std = np.std(angle)
+        angle = ele[0] if ele[0] <= 90 else 180 - ele[0]
+        angles.append(angle)
+    mean = np.mean(angles)
+    std = np.std(angles)
 
-    threshold = 2 * std
+    threshold = 2*std
 
-    outliers_removed = [x for x in array if abs(x[0] - mean) <= threshold]
+    # print(mean)
+    # print(std)
+
+    outliers_removed = []
+
+    for ele in array:
+        angle = ele[0] if ele[0] <= 90 else 180 - ele[0]
+        if abs(angle - mean) < threshold:
+            outliers_removed.append(ele)
 
     return outliers_removed
 
 
 if __name__ == '__main__':
     # Đọc hình ảnh ở dạng xám
-    img = cv2.imread('image/Chessboard_00601.png')
+    img = cv2.imread('image/Chessboard_0511.png', 0)
+
+    # print(img.shape)
     # img = increase_brightness(img)
     #
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    # img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
     # Xóa nhiễu sóng sin
     img = denoisePeriodic(img)
@@ -273,7 +263,7 @@ if __name__ == '__main__':
     cv2.waitKey(0)
 
     # Xóa nhiễu hạt tiêu, làm mượt    
-    img, res = remove_noise_and_smooth(img)
+    img = remove_noise_and_smooth(img)
     # Line detect
 
     lines = line_detection(img)
@@ -283,8 +273,6 @@ if __name__ == '__main__':
     # Visualize
     imm = np.zeros((img.shape[0], img.shape[1], 3))
 
-    max_angle = 0
-    min_angle = 90
     for line in lines:
         # Extracted points nested in the list
         if line[0][1] > line[1][1]:
@@ -305,11 +293,6 @@ if __name__ == '__main__':
         dot_product = np.dot(unit_vector_1, unit_vector_2)
         angle = np.arccos(dot_product)
         angle_deg = angle * 180 / math.pi
-        # print(angle_deg)
-        # if max_angle < angle_deg:
-        #     max_angle = angle_deg
-        # if min_angle > angle_deg:
-        #     min_angle = angle_deg
 
         # find distance
         p1 = np.array([x1, y1])
@@ -330,7 +313,8 @@ if __name__ == '__main__':
 
     # filter duplicate line
 
-    verLine = remove_duplicate(vertical, imm)
+    verLine = remove_outlier(vertical)
+    verLine = remove_duplicate(verLine, imm)
     # verLine = remove_outlier(verLine)
 
     for line in verLine:
@@ -338,7 +322,8 @@ if __name__ == '__main__':
         x2, y2 = line[2][1]
         cv2.line(imm, (x1, y1), (x2, y2), (0, 255, 255), 2)
 
-    horLine = remove_duplicate(horizontal, imm)
+    horLine = remove_outlier(horizontal)
+    horLine = remove_duplicate(horLine, imm)
     # horLine = remove_outlier(horLine)
 
     for line in horLine:
