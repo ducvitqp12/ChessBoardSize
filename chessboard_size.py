@@ -5,6 +5,81 @@ import math
 from scipy.ndimage.measurements import label
 
 
+def denoisePeriodic(img, size_filter=2, diff_from_center_point=50, size_thresh=2):
+    h, w = img.shape[:]
+    img_float32 = np.fft.fft2(img)
+    fshift = np.fft.fftshift(img_float32)
+
+    # show the furier  image transform by log e of fft
+    furier_tr = 20 * np.log(np.abs(fshift))
+
+    # plt.subplot(121),plt.imshow(img, cmap = 'gray')
+    # plt.title('Input Image'), plt.xticks([]), plt.yticks([])
+    # plt.subplot(122),plt.imshow(furier_tr, cmap = 'gray')
+    # plt.show()
+
+    # get center point value
+    center_fur = furier_tr[int(h / 2)][int(w / 2)]
+
+    # find pick freq point
+    new_fur = np.copy(furier_tr)
+    kernel = np.ones((2 * size_filter + 1, 2 * size_filter + 1), np.float32) / (
+            (2 * size_filter + 1) * (2 * size_filter + 1) - 1)
+    kernel[size_filter][size_filter] = -1
+    kernel = -kernel
+    # print(kernel)
+    dst = cv2.filter2D(new_fur, -1, kernel)
+
+    diff_from_center_point = center_fur * diff_from_center_point / 356
+    dst[0][:] = dst[1][:] = dst[:][0] = dst[:][1] = 0
+
+    dst[int(h / 2)][int(w / 2)] = 0
+    index = np.where(dst > diff_from_center_point)
+    # print("index",index)
+
+    # remove point is not the pick one
+    index_x = []
+    index_y = []
+
+    for i, item in enumerate(index[0]):
+
+        value = furier_tr[index[0][i]][index[1][i]]
+        # print("value ", value)
+        matrix = np.copy(furier_tr[max(0, index[0][i] - size_filter):min(h, index[0][i] + size_filter + 1),
+                         max(0, index[1][i] - size_filter):min(w, index[1][i] + size_filter + 1)])
+        # print("new maxtirx", matrix)
+        matrix[size_filter][size_filter] = 0
+
+        max_value = np.amax(matrix)
+        # print("mean", max_value)
+
+        if (value - max_value < 20):
+            continue
+        index_y.append(index[0][i])
+        index_x.append(index[1][i])
+
+    # set freq value of pick points to 1
+    for i, item in enumerate(index_x):
+        for j in range(size_thresh):
+            for k in range(size_thresh):
+                x = max(0, min(int(index_y[i] - int(size_thresh / 2) + j), h - 1))
+                y = max(0, min(int(index_x[i] - int(size_thresh / 2) + k), w - 1))
+                # print("toa do", x, y)
+                furier_tr[x, y] = 1
+                fshift[x, y] = 1
+
+    # inverse to image
+    # inverse shift
+    f_ishift = np.fft.ifftshift(fshift)
+    # inverse furier
+    img_back = np.fft.ifft2(f_ishift)
+    img_back = np.abs(img_back).astype(np.uint8)
+    # plt.subplot(121),plt.imshow(img_back, cmap = 'gray')
+    # plt.show()
+
+    return img_back
+
+
 def increase_brightness(img, value=30):
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
     h, s, v = cv2.split(hsv)
@@ -50,66 +125,41 @@ def remove_sin_wave_noise(image):
 def remove_noise_and_smooth(image):
     median = cv2.medianBlur(image, 5)  # Xóa nhiễu hạt tiêu
 
+    # cv2.imshow("thres", median)
+    #
+    # cv2.waitKey(0)
+
     blur = cv2.GaussianBlur(median, (5, 5), 0)  # Làm mượt ảnh
+
+    # cv2.imshow("thres", blur)
+    #
+    # cv2.waitKey(0)
 
     im = (cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))).apply(blur)  # Cân bằng histogram tăng độ tương phản
 
     ret, thresh = cv2.threshold(im, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)  # Threshold về binary image
 
-    # cv2.imshow("thres", thresh)
+    cv2.imshow("thres", thresh)
+
+    cv2.waitKey(0)
+
+    kernel = np.ones((3, 3), np.uint8)
     #
-    # cv2.waitKey(0)
-
-    # print(thresh.shape)
-
-    kernel = np.ones((5, 5), np.uint8)
+    # img_erosion = cv2.erode(thresh, kernel, iterations=1)
     #
-    img_erosion = cv2.erode(thresh, kernel, iterations=1)
-    # img_dilation = cv2.dilate(img_erosion, kernel, iterations=1)
-    # img_dilation = cv2.dilate(thresh, kernel, iterations=1)
 
-    labelsAry, nfeatures = label(img_erosion)
+    img_dilation = cv2.dilate(thresh, kernel, iterations=1)
 
-    bboxes = []
-    weight = []
-    index = 0
-    for i in range(1, nfeatures + 1):
-        arr = labelsAry == i
-        weight.append(np.sum(arr))
+    cv2.imshow("dilate1", img_dilation)
 
-    # max_value = max(weight)
-    # weight.remove(max_value)
-
-    mean = np.mean(weight)
-    std = np.std(weight)
-
-    print("%f %f" % (mean, std))
-    threshold = std / 2
-
-    res = np.zeros(labelsAry.shape, dtype=img_erosion.dtype)
-
-    for i in range(1, nfeatures + 1):
-        arr = labelsAry == i
-        if abs(np.sum(arr) - mean) <= threshold:
-            res += arr.astype(np.uint8) * 255
-
-    # cv2.imshow("thress", res)
-    #
-    # cv2.waitKey(0)
-
-    img_dilation = cv2.dilate(res, kernel, iterations=1)
-
-    img_dilation = cv2.dilate(img_dilation, kernel, iterations=1)
+    cv2.waitKey(0)
 
     labelsAry2, nfeatures2 = label(img_dilation)
 
     _weight = 0
 
-    # res2 = np.zeros(labelsAry.shape, dtype=img_erosion.dtype)
-
     imax = 0
 
-    arr = []
     for i in range(1, nfeatures2 + 1):
         arr = labelsAry2 == i
         if _weight < np.sum(arr):
@@ -118,8 +168,14 @@ def remove_noise_and_smooth(image):
 
     res2 = labelsAry2 == imax
 
-    return thresh, res2.astype(np.uint8) * 255
+    res2 = res2.astype(np.uint8) * 255
 
+    cv2.imshow("res", cv2.erode(res2, kernel, iterations=1))
+
+    cv2.waitKey(0)
+
+    return thresh, cv2.erode(res2, kernel, iterations=1)
+    #
     # return thresh
 
 
@@ -132,7 +188,7 @@ def line_detection(image):
     # Line Detection
     lines = cv2.HoughLinesP(
         edges,  # Input edge image
-        2,  # Distance resolution in pixels
+        3,  # Distance resolution in pixels
         np.pi / 180,  # Angle resolution in radians
         threshold=100,  # Min number of votes for valid line
         minLineLength=5,  # Min allowed length of line
@@ -149,14 +205,39 @@ def line_detection(image):
     return lines_list
 
 
-def remove_duplicate(array):
+def line_intersection(line1, line2):
+    xdiff = (line1[0][0] - line1[1][0], line2[0][0] - line2[1][0])
+    ydiff = (line1[0][1] - line1[1][1], line2[0][1] - line2[1][1])
+
+    def det(a, b):
+        return a[0] * b[1] - a[1] * b[0]
+
+    div = det(xdiff, ydiff)
+    if div == 0:
+        return -1, -1
+
+    d = (det(*line1), det(*line2))
+    x = det(d, xdiff) / div
+    y = det(d, ydiff) / div
+
+    return x, y
+
+
+def remove_duplicate(array, img):
     result = [array[0]]
     for ele in array:
         check = True
         for res in result:
-            if np.abs(ele[1] - res[1]) < 10:
+            if np.abs(ele[1] - res[1]) < 4 and (ele[0] - 90) * (res[0] - 90) >= 0:
                 check = False
                 break
+
+            x, y = line_intersection(ele[2], res[2])
+
+            if 0 < x < img.shape[1] and 0 < y < img.shape[0]:
+                check = False
+                break
+
         if check:
             result.append(ele)
 
@@ -179,45 +260,21 @@ def remove_outlier(array):
 
 if __name__ == '__main__':
     # Đọc hình ảnh ở dạng xám
-    img = cv2.imread('image/Chessboard_0511.png')
-
-    img = increase_brightness(img)
+    img = cv2.imread('image/Chessboard_00601.png')
+    # img = increase_brightness(img)
     #
     img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    # cv2.imshow("thress", img)
-    #
-    # cv2.waitKey(0)
     # Xóa nhiễu sóng sin
-    img = remove_sin_wave_noise(img)
+    img = denoisePeriodic(img)
+
+    cv2.imshow("result", img)
+
+    cv2.waitKey(0)
+
     # Xóa nhiễu hạt tiêu, làm mượt    
     img, res = remove_noise_and_smooth(img)
-
-    contours, _ = cv2.findContours(res, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    # Find the contour with the maximum area
-    cnt = max(contours, key=cv2.contourArea)
-
-    # Find the convex hull of the contour
-    hull = cv2.convexHull(cnt)
-
-    print(hull)
-
-    cv2.imshow("thress", img)
-
-    cv2.waitKey(0)
-
-    approx = cv2.approxPolyDP(hull, epsilon=0.02 * cv2.arcLength(hull, True), closed=True)
-
-    cv2.fillConvexPoly(res, approx, 255)
-
-    img = np.bitwise_and(img, res)
     # Line detect
-    kernel = np.ones((5, 5), np.uint8)
-
-    cv2.imshow("thress", cv2.erode(img, kernel, iterations=1))
-
-    cv2.waitKey(0)
 
     lines = line_detection(img)
 
@@ -230,8 +287,12 @@ if __name__ == '__main__':
     min_angle = 90
     for line in lines:
         # Extracted points nested in the list
-        x1, y1 = line[0]
-        x2, y2 = line[1]
+        if line[0][1] > line[1][1]:
+            x1, y1 = line[0]
+            x2, y2 = line[1]
+        else:
+            x1, y1 = line[1]
+            x2, y2 = line[0]
         # Draw the lines joing the points
         # On the original image
         Ox = [1, 0]
@@ -242,13 +303,13 @@ if __name__ == '__main__':
         unit_vector_1 = Ox / np.linalg.norm(Ox)
         unit_vector_2 = vector / np.linalg.norm(vector)
         dot_product = np.dot(unit_vector_1, unit_vector_2)
-        angle = np.arccos(dot_product) if np.arccos(dot_product) <= math.pi / 2 else math.pi - np.arccos(dot_product)
+        angle = np.arccos(dot_product)
         angle_deg = angle * 180 / math.pi
         # print(angle_deg)
-        if max_angle < angle_deg:
-            max_angle = angle_deg
-        if min_angle > angle_deg:
-            min_angle = angle_deg
+        # if max_angle < angle_deg:
+        #     max_angle = angle_deg
+        # if min_angle > angle_deg:
+        #     min_angle = angle_deg
 
         # find distance
         p1 = np.array([x1, y1])
@@ -262,23 +323,23 @@ if __name__ == '__main__':
     horizontal = []
     print(array_object[0])
     for obj in array_object:
-        if obj[0] - min_angle < (max_angle - min_angle) // 2:
+        if obj[0] < 45 or obj[0] > 135:
             horizontal.append(obj)
-        elif obj[0] - min_angle >= (max_angle - min_angle) // 2:
+        else:
             vertical.append(obj)
 
     # filter duplicate line
 
-    verLine = remove_duplicate(vertical)
-    verLine = remove_outlier(verLine)
+    verLine = remove_duplicate(vertical, imm)
+    # verLine = remove_outlier(verLine)
 
     for line in verLine:
         x1, y1 = line[2][0]
         x2, y2 = line[2][1]
         cv2.line(imm, (x1, y1), (x2, y2), (0, 255, 255), 2)
 
-    horLine = remove_duplicate(horizontal)
-    horLine = remove_outlier(horLine)
+    horLine = remove_duplicate(horizontal, imm)
+    # horLine = remove_outlier(horLine)
 
     for line in horLine:
         x1, y1 = line[2][0]
